@@ -1,4 +1,5 @@
 function AnimateSprite(imgs,size,fps,loopIndex,isLoop) {
+	console.log(imgs);
     var scope = this;
     
     THREE.Sprite.call(this);
