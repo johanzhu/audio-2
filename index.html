@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no" />
+		<title>audio visualizer 2</title>
+	</head>
+	<script type="text/javascript" src="lib/three.js" ></script>
+	<script type="text/javascript" src="js/world.js" ></script>
+	<script type="text/javascript" src="lib/bas.js" ></script>
+	<script type="text/javascript" src="lib/preload.js" ></script>
+	<script type="text/javascript" src="lib/orbitcontrol.js" ></script>
+	<script type="text/javascript" src="lib/TweenMax.min.js" ></script>
+	<script type="text/javascript" src="js/fxaa.js" ></script>
+	<script type="text/javascript" src="lib/trailrenderer.js" ></script>
+	<script type="text/javascript" src="js/trail.js" ></script>
+	<script type="text/javascript" src="js/animatesprite.js" ></script>
+	<script type="text/javascript" src="js/musicbars.js" ></script>
+	<script type="text/javascript" src="js/musicScene.js" ></script>
+	<style>
+		html,body{
+			width: 100%;
+			height: 100%;
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+			background-color: #C3DBE9;
+			font-family: -apple-system, BlinkMacSystemFont, "PingFang SC","Helvetica Neue",STHeiti,"Microsoft Yahei",Tahoma,Simsun,sans-serif;
+		}
+		#play{
+			position: absolute;
+			display: none;
+			left: 50%;
+			top: 50%;
+			margin-left: -50px;
+			margin-top: -25px;
+			z-index: 999;
+			border: 2px solid black;
+			font-size: 30px;
+			width: 100px;
+			height: 50px;
+			text-align: center;
+			line-height: 50px;
+			cursor: pointer;
+			background-color: #C3DBE9;
+		}
+		#loading{
+			position: absolute;
+			left: 50%;
+			top: 50%;
+			margin-left: -50px;
+			margin-top: -25px;
+			z-index: 999;
+			font-size: 30px;
+			width: 100px;
+			height: 50px;
+			text-align: center;
+			line-height: 50px;
+			cursor: pointer;
+		}
+		#loadingBar{
+			position: absolute;
+			left: 50%;
+			top: 50%;
+			margin-left: -60px;
+			margin-top: 30px;
+			z-index: 999;
+			font-size: 30px;
+			width: 0px;
+			height: 20px;
+			text-align: center;
+			line-height: 50px;
+			background-color: #B067E7;
+		}
+	</style>
+	<body>
+		<div id="play">Play</div>
+		<div id="loading">Loading...</div>
+		<div id="loadingBar"></div>
+		<script>
+			debug = true;
+			var preload,
+				world,
+				mixer,
+				sound,
+				analyser,
+				trail1,
+				trail2,
+				trailTarget1,
+				trailTarget2,
+				bc,
+				scene2;
+				
+			var eventBus = new THREE.EventDispatcher();
+			var clock = new THREE.Clock();
+			var load = 2;
+			var lineAni;
+			var isPlay = false;
+			var firstPlay = true;
+			var bcAni = false;
+			var showBar = false;
+			var total1 = 0,
+				total2 = 0;
+			
+			var fxaaPass,
+				fxaaBuffer = new THREE.WebGLRenderTarget(1,1,{
+					format: THREE.RGBAFormat
+				});
+				
+			fxaaBuffer.setSize(window.innerWidth * 1.5, window.innerHeight * 1.5);
+			
+			var playBtn = document.getElementById('play');
+			var loadingBar = document.getElementById('loadingBar');
+			
+			loadAssets();
+			
+			loadMusic();
+			
+			eventBus.addEventListener('loaded',function() {
+				console.log('loaded');
+				if(load == 1) 
+					loadComplete();
+				else	
+					load -= 1;
+				
+			});
+			
+			eventBus.addEventListener('music', function() {
+				
+				showBar = true;
+				
+			});
+			
+			function loadComplete() {
+				console.log('加载完毕');
+				initWorld();		
+				
+				createScene();
+				
+				animate();
+				
+			}
+			
+			function initWorld() {
+				
+				document.getElementById('loading').style.display = 'none';
+				
+				document.getElementById('loadingBar').style.display = 'none';
+				
+				playBtn.style.display = 'block';
+				
+				world = new World();
+				
+				world.init();
+				
+				world.camera.position.z = 20;
+				
+				fxaaPass = new THREE.FXAAPass(world,fxaaBuffer.texture);
+				
+				fxaaPass.setResolution(window.innerWidth * 1.5, window.innerHeight * 1.5);
+				
+				window.addEventListener('resize',onWindowResize,false);
+	
+				function onWindowResize(){
+		      		var WIDTH=window.innerWidth;
+		      		var HEIGHT=window.innerHeight;
+		      		world.renderer.setSize(WIDTH, HEIGHT);
+		      		world.camera.aspect = WIDTH / HEIGHT;
+		      		world.camera.updateProjectionMatrix();
+		      		
+		      		fxaaBuffer.setSize(WIDTH * 1.5, HEIGHT * 1.5);
+		      		fxaaPass.setResolution(WIDTH * 1.5, HEIGHT * 1.5);
+		    	}
+				
+				world.removeAxes();
+				
+				debug && new THREE.OrbitControls(world.camera);
+				
+			}
+			
+			function createScene() {
+				
+				trailTarget1 = new THREE.Mesh(
+					new THREE.SphereGeometry(0.5,32,32),
+					new THREE.MeshBasicMaterial({color:0xB975EC})
+				);
+				
+				trailTarget2 = new THREE.Mesh(
+					new THREE.SphereGeometry(0.5,32,32),
+					new THREE.MeshBasicMaterial({color:0xe986bc})
+				);
+				
+				bc = new THREE.Mesh(
+					new THREE.CircleGeometry( 5, 32 ),
+					new THREE.MeshBasicMaterial({color:0xAD5864})
+				);
+				
+				bc.position.set(0,5,30);
+				
+				bc.scale.set(0.001,0.001,0.001);
+				
+				trailTarget1.position.set(10, -10, 0);
+				
+				trailTarget2.position.set(-10, -10, 0);
+																							
+				trail1 = new Trail(world.scene, trailTarget1, 'circle', 900, [185/255,117/255,236/255,1],[185/255,117/255,236/255,1]);
+																							
+				trail2 = new Trail(world.scene, trailTarget2, 'circle', 900, [233/255,134/255,188/255,1],[233/255,134/255,188/255,1]);
+				
+				world.scene.add(trailTarget1);
+				
+				world.scene.add(trailTarget2);
+				
+				world.scene.add(bc);
+				
+				var imgs = [
+					preload.getResult('1'),
+					preload.getResult('2'),
+					preload.getResult('3'),
+					preload.getResult('4'),
+					preload.getResult('5'),
+					preload.getResult('6')
+				];
+				
+				scene2 = new MusicScene(imgs);
+				
+				playBtn.onclick = function() {
+					
+					playBtn.style.display = 'none';
+					
+					sound.play();
+					
+					isPlay = true;
+					
+					if(firstPlay) TweenMax.to(world.camera.position, 4, { y : 5, z : 50, ease:Linear.easeNone, delay: 3 } );
+					
+					firstPlay = false;
+					
+				}
+					
+			}
+			
+			
+			function loadAssets() {
+				
+				preload = new createjs.LoadQueue(false);
+				
+        		preload.addEventListener('complete', onLoadComplete);
+        		
+        		preload.addEventListener('progress', onProgress);
+        		
+        		preload.loadFile({src: './assets/1.png',id:'1'});
+        		
+        		preload.loadFile({src: './assets/2.png',id:'2'});
+        		
+        		preload.loadFile({src: './assets/3.png',id:'3'});
+        		
+        		preload.loadFile({src: './assets/4.png',id:'4'});
+        		
+        		preload.loadFile({src: './assets/5.png',id:'5'});
+        		
+        		preload.loadFile({src: './assets/6.png',id:'6'});
+        		
+        		preload.loadFile({src: './assets/gouYu.png',id:'gouYu'});
+				
+				function onLoadComplete() {
+					
+					eventBus.dispatchEvent({type:'loaded'});
+					
+				}
+				
+				function onProgress() {
+					
+					var per = preload.progress * 50;
+					
+					total1 = per;
+					
+					var w = (total1 + total2) * 0.01 * 150;
+					
+					loadingBar.style.width = w + 'px';
+					
+				}
+				
+			}
+			
+			function loadMusic() {
+				
+				var listener = new THREE.AudioListener();
+				
+				sound = new THREE.Audio(listener);
+				
+				var audioLoader = new THREE.AudioLoader();
+				
+				analyser = new THREE.AudioAnalyser(sound, 1024);
+				
+				audioLoader.load('./assets/music.mp3', onLoadComplete, onProgress);
+				
+				function onLoadComplete(buffer) {
+					
+					sound.setBuffer( buffer );
+					
+					sound.setLoop(false);
+					
+					sound.setVolume(1);
+					
+					eventBus.dispatchEvent({type:'loaded'});
+					
+				}
+				
+				function onProgress(xhr) {
+					
+					var per = xhr.loaded/xhr.total * 50;
+					
+					total2 = per;
+					
+					var w = (total1 + total2) * 0.01 * 150;
+					
+					loadingBar.style.width = w + 'px';
+					
+				}
+				
+			}
+			
+			function render() {
+				
+				world.renderer.render(world.scene,world.camera,fxaaBuffer,true);
+				
+				fxaaPass.render(null,false);
+				
+			}
+			
+			function objectUpdate() {
+				
+				var speed = 1.5; 
+				
+				var r = 4;
+				
+				if(isPlay) {
+					
+					var time = clock.getElapsedTime();
+					
+					if(time > 8.6 && bcAni == false) {
+						
+						TweenMax.to(bc.scale, 1, {x : 5, y : 5, z : 5, ease:Linear.easeNone, onComplete: function() {
+							
+							document.body.style.backgroundColor = '#AD5864';
+							
+							world.changeScene(scene2,world.camera);
+							
+							setTimeout(scene2.animate, 400);
+							
+							world.camera.position.set(0,0,200);
+							
+						}});
+						
+						bcAni = true;
+						
+					}
+					
+					trail1.update(speed * time, move1);
+				
+					trail2.update(speed * time, move2);
+					
+				}
+				
+				function move1(target,time) {
+					
+					target.position.set(
+						
+						Math.cos(time) * r,
+						
+						-10 + time * 2,
+						
+						0						
+					)
+				}
+				
+				function move2(target,time) {
+					
+					
+					target.position.set(
+						
+						-Math.cos(time) * r,
+						
+						-10 + time * 2,
+						
+						0
+					)
+					
+				}
+				
+				var data1 = analyser.getFrequencyData();
+				
+				var data2 = analyser.getAverageFrequency();
+				
+				if(showBar) scene2.update(data1,data2);
+				
+			}
+			
+			function detectMusicEnd() {
+				
+				var isPlaying = sound.isPlaying ? true : false;
+				
+				if(!isPlaying) {
+					
+					isPlay = false;
+					
+					playBtn.style.display = 'block';
+					
+				}
+				
+			}
+			
+			function animate() {
+				
+				requestAnimationFrame(animate);
+				
+				objectUpdate();
+				
+				detectMusicEnd();
+				
+				render();
+				
+			}
+			
+		</script>
+	</body>
+</html>
