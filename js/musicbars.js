@@ -4,7 +4,7 @@ function MusicBars() {
 	
 	THREE.Object3D.call(this);
 	
-	var r = 38;
+	var r = 42;
 	
 	var oneSideNum = 170;
 	
